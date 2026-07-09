@@ -1,0 +1,8 @@
+# PolicyPulse dependencies. Install with:  pip install -r requirements.txt
+requests==2.34.2          # fetch web pages and download PDFs
+beautifulsoup4==4.15.0    # parse the RBI HTML listing
+lxml==6.1.1               # fast HTML parser used by BeautifulSoup
+python-dotenv==1.2.2      # load secrets from the local .env file
+supabase==2.31.0          # insert rows into our Supabase database
+pdfplumber==0.11.10       # primary: extract text from PDFs
+pymupdf==1.28.0           # fallback PDF text extractor (imported as 'fitz')

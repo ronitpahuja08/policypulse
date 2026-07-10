@@ -23,18 +23,28 @@ A **solo, beginner founder**. That means the code should be:
   free tier, etc.)
 - **Python** everywhere.
 
-## Current status (Phase 1 — today)
+## Current status (Phase 1)
 
-Only the **first crawler is built and working end-to-end**:
+**Two crawlers are built and working end-to-end**, both storing into the same
+`documents` table:
 
-- `crawler/rbi_notifications.py` — fetches the RBI notifications listing, parses each
-  item, downloads its PDF, extracts the text, and stores a record in Supabase. It uses
-  a `content_hash` (a fingerprint of the text) to skip documents we've already seen, so
-  running it repeatedly only adds genuinely new notifications.
+- `crawler/rbi_notifications.py` — fetches the RBI notifications listing (an ASP.NET
+  page). The PDF link is on the listing row itself, so it's one request per item.
+- `crawler/sebi_circulars.py` — fetches SEBI's circulars listing (server-rendered
+  HTML). The listing only gives a *detail-page* link, so it makes one extra request per
+  circular to pull the PDF URL out of the detail page's `<iframe src='...?file=...pdf'>`.
+
+The shared "back half" (download PDF → extract text → sha256 fingerprint → de-dup →
+insert, with `needs_review` handling) lives in **`crawler/common.py`** so it's written
+once and reused by every crawler. Each crawler only contains the logic for reading its
+own regulator's listing page.
+
+Both use a `content_hash` (fingerprint) to skip documents we've already seen, so running
+repeatedly only adds genuinely new items.
 
 **Not built yet (future phases — do NOT build unless asked):**
 
-- SEBI crawler (and other regulators: IRDAI, MCA, etc.)
+- More regulators (IRDAI, MCA, etc.)
 - Classifier (fills in `severity` and `entities_affected`)
 - Daily compliance brief generator
 
@@ -44,11 +54,14 @@ Only the **first crawler is built and working end-to-end**:
 GitHub Actions (daily 00:30 UTC / 6:00am IST)
         |
         v
-crawler/rbi_notifications.py  --->  RBI website (fetch + parse + download PDFs)
-        |
+crawler/rbi_notifications.py  --->  RBI website   \
+crawler/sebi_circulars.py     --->  SEBI website    > (fetch + parse + download PDFs)
+        |  (both use crawler/common.py)           /
         v
 Supabase Postgres  (table: documents)
 ```
+
+The two crawlers run **sequentially** in the same daily job (RBI, then SEBI).
 
 ## The database
 
@@ -79,5 +92,11 @@ One table, `documents`, in Supabase (Postgres). Key columns:
   2–3 seconds between requests. These are government sites — do not hammer them.
 - **Never crash the whole run** because one document failed. Log the failure, skip it,
   keep going.
-- Each crawler lives in `crawler/` and is runnable on its own with a `--limit N` flag
-  for quick testing.
+- **Naming convention for crawlers:** each crawler is `crawler/<source>.py`, and the
+  `source` string it writes to the database matches its filename (e.g.
+  `crawler/sebi_circulars.py` → `source = 'sebi_circulars'`). Follow this for any new
+  regulator.
+- Put shared logic in `crawler/common.py`; keep each crawler file limited to reading its
+  own regulator's listing.
+- Each crawler is runnable on its own with a `--limit N` flag for quick testing. SEBI
+  also has `--days N` (only circulars from the last N days), used for backfills.

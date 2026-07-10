@@ -1,4 +1,4 @@
-name: Daily RBI crawl
+name: Daily regulator crawl
 
 on:
   schedule:
@@ -28,3 +28,10 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
         run: python crawler/rbi_notifications.py
+
+      - name: Run SEBI crawler
+        if: always()   # run SEBI even if RBI failed — one site being down shouldn't block the other
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: python crawler/sebi_circulars.py

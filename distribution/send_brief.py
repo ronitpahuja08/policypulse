@@ -14,12 +14,9 @@ SMTP email credentials AND (b) pass the explicit --send flag. With no credential
 --send, it only *previews* the email (a "dry run"): it builds the message and prints it,
 but sends nothing. So simply having this file in the repo does nothing on its own.
 
-Two things are still placeholders until later phases:
-  - The brief content itself. The real brief generator is Day 6; for now this script
-    builds a simple PLACEHOLDER brief that just lists recently-crawled documents, so we
-    can test the email pipeline end to end. `build_placeholder_brief()` gets replaced later.
-  - The subscriber list. The `subscribers` table SQL is in schema.sql but you don't have
-    to create it until you're ready. Use --test-recipient to preview without it.
+The brief content comes from `distribution/generate_brief.py`, which builds the real
+briefing from classified documents (severity + summary). The subscriber list lives in the
+`subscribers` table (schema.sql) — but you don't need it to preview: use --test-recipient.
 
 HOW TO RUN
 ----------
@@ -41,13 +38,14 @@ import logging
 import os
 import smtplib
 import sys
-from datetime import datetime, timedelta, timezone
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.utils import formataddr
 
 from dotenv import load_dotenv
 from supabase import create_client
+
+import generate_brief  # sibling module: builds the brief content from classified docs
 
 
 # --------------------------------------------------------------------------------------
@@ -116,101 +114,6 @@ def get_active_subscribers(client):
         .execute()
     )
     return result.data
-
-
-# --------------------------------------------------------------------------------------
-# The brief content (PLACEHOLDER — replaced by the real generator on Day 6)
-# --------------------------------------------------------------------------------------
-
-def build_placeholder_brief(client, since_hours):
-    """INTERIM brief: list documents crawled in the last `since_hours` hours, grouped by
-    source. Returns (subject, html_body, text_body).
-
-    This is a stand-in so we can test the *email pipeline* before the real brief generator
-    exists. The Day-6 generator will replace this one function with proper summaries.
-    """
-    cutoff = (datetime.now(timezone.utc) - timedelta(hours=since_hours)).isoformat()
-    rows = (
-        client.table("documents")
-        .select("source,title,published_date,url")
-        .gte("created_at", cutoff)
-        .order("published_date", desc=True)
-        .execute()
-        .data
-    )
-
-    today = datetime.now(timezone.utc).strftime("%d %b %Y")
-
-    # Group the documents by their source (rbi_notifications, sebi_circulars, ...).
-    by_source = {}
-    for row in rows:
-        by_source.setdefault(row["source"], []).append(row)
-
-    # Friendly display names for known sources.
-    source_names = {
-        "rbi_notifications": "RBI — Notifications",
-        "sebi_circulars": "SEBI — Circulars",
-    }
-
-    if not rows:
-        subject = f"PolicyPulse brief — {today} (no new updates)"
-        text_body = "No new regulatory updates in the selected window."
-        html_body = f"<p>{text_body}</p>"
-        return subject, _wrap_html(today, html_body, placeholder=True), text_body
-
-    subject = f"PolicyPulse brief — {today} ({len(rows)} updates)"
-
-    # Build both a plain-text and an HTML version (good email clients pick HTML).
-    text_lines = [f"PolicyPulse daily brief — {today}", ""]
-    html_sections = []
-    for source, docs in by_source.items():
-        heading = source_names.get(source, source)
-        text_lines.append(f"{heading} ({len(docs)}):")
-        html_items = []
-        for d in docs:
-            date = d.get("published_date") or ""
-            text_lines.append(f"  - [{date}] {d['title']}")
-            html_items.append(
-                f"<li><span style='color:#666'>{date}</span> "
-                f"<a href='{d['url']}'>{_escape(d['title'])}</a></li>"
-            )
-        text_lines.append("")
-        html_sections.append(
-            f"<h3 style='margin:18px 0 6px'>{_escape(heading)} "
-            f"<span style='color:#888;font-weight:normal'>({len(docs)})</span></h3>"
-            f"<ul style='margin:0;padding-left:20px;line-height:1.6'>{''.join(html_items)}</ul>"
-        )
-
-    text_body = "\n".join(text_lines)
-    html_body = "".join(html_sections)
-    return subject, _wrap_html(today, html_body, placeholder=True), text_body
-
-
-def _wrap_html(today, inner_html, placeholder=False):
-    """Wrap brief HTML in a minimal, email-safe template."""
-    note = (
-        "<p style='background:#fff8e1;border:1px solid #ffe082;padding:8px 12px;"
-        "border-radius:6px;font-size:13px;color:#8a6d00'>"
-        "⚠️ Placeholder brief — this lists recently-crawled documents. The real "
-        "AI-generated summary arrives in a later phase.</p>"
-        if placeholder
-        else ""
-    )
-    return (
-        "<div style='font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;"
-        "max-width:640px;margin:0 auto;color:#1a1a1a'>"
-        f"<h2 style='margin:0 0 4px'>PolicyPulse</h2>"
-        f"<p style='color:#666;margin:0 0 16px'>Daily regulatory brief · {today}</p>"
-        f"{note}{inner_html}"
-        "</div>"
-    )
-
-
-def _escape(text):
-    """Very small HTML-escape for titles (avoids breaking the markup)."""
-    return (
-        text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-    )
 
 
 # --------------------------------------------------------------------------------------
@@ -307,7 +210,7 @@ def main():
     from_email = smtp_cfg["from_email"] if smtp_cfg else "brief@policypulse.example.com"
 
     # --- Build the brief once (same content for everyone) ---
-    brief = build_placeholder_brief(client, args.since_hours)
+    brief = generate_brief.build_brief(client, args.since_hours)
     log.info("Brief subject: %s", brief[0])
 
     # --- Work out the recipient list ---

@@ -6,3 +6,4 @@ python-dotenv==1.2.2      # load secrets from the local .env file
 supabase==2.31.0          # insert rows into our Supabase database
 pdfplumber==0.11.10       # primary: extract text from PDFs
 pymupdf==1.28.0           # fallback PDF text extractor (imported as 'fitz')
+google-genai==2.18.1      # classify documents with Google Gemini (free tier)

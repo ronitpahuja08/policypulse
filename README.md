@@ -13,11 +13,13 @@ brief for fintech/NBFC compliance officers.
   notifications listing, downloads each PDF, extracts the text, and stores it in Supabase.
 - **Crawler #2: SEBI circulars** (`crawler/sebi_circulars.py`) — same idea for SEBI
   (the PDF lives one click deeper, inside each circular's detail page).
-- Both share `crawler/common.py` and de-duplicate using a content fingerprint, so
+- Both share `crawler/common.py` and de-duplicate on content fingerprint **and** URL, so
   re-running only adds genuinely new documents.
-- **Distribution** (`distribution/send_brief.py`) — the code that
-  will email the daily brief to subscribers. It is inert until you switch it on — see
-  "Email distribution" below.
+- **Classifier** (`classify/classify.py`) — reads each document and uses **Google Gemini
+  (free tier)** to fill in severity, affected entities, and a plain-English summary. Inert
+  until you add a `GEMINI_API_KEY` — see "Classifier" below.
+- **Brief + distribution** (`distribution/`) — builds the real daily brief from classified
+  documents; the email sender is inert until you switch it on (see "Email distribution").
 
 ## Setup (one time)
 
@@ -65,6 +67,23 @@ python crawler/sebi_circulars.py --days 21
 You'll see a live log of each item being downloaded, extracted, and either inserted or
 skipped (because we already had it), then a summary line at the end.
 
+## Classifier (Google Gemini, free tier)
+
+`classify/classify.py` reads each document's text and fills in its `severity`,
+`entities_affected`, and `summary`. It needs a free Gemini key:
+
+1. Get one at **https://aistudio.google.com/apikey**.
+2. Add `GEMINI_API_KEY=your-key` to `.env`.
+3. Make sure the `summary` column exists (run the `alter table` line in
+   [schema.sql](schema.sql) if you set up the table before it was added).
+
+```bash
+python classify/classify.py --limit 5   # classify 5 documents (test)
+python classify/classify.py             # classify all unclassified documents
+```
+
+Without a key it just prints how to get one and exits (does nothing).
+
 ## Email distribution
 
 `distribution/send_brief.py` is the code that will eventually email the daily brief to
@@ -80,12 +99,13 @@ python distribution/send_brief.py --test-recipient you@example.com --since-hours
 ```
 
 Notes:
-- The brief content is currently a **placeholder** that lists recently-crawled documents.
-  The real AI-generated summary is a later phase (Day 6); it will replace one function
-  (`build_placeholder_brief`).
-- **To activate it later:** (1) run the `subscribers` table SQL in [schema.sql](schema.sql);
-  (2) fill in the `SMTP_*` / `FROM_EMAIL` / `SITE_URL` values in `.env` (and add them as
-  GitHub secrets); (3) add a step to the workflow that runs `send_brief.py --send`.
+- The brief content is built by `distribution/generate_brief.py` from **classified**
+  documents (severity + summary), grouped by priority. Run the classifier first so the
+  brief has summaries to show.
+- **To activate sending later:** (1) run the `subscribers` table SQL in
+  [schema.sql](schema.sql); (2) fill in the `SMTP_*` / `FROM_EMAIL` / `SITE_URL` values in
+  `.env` (and add them as GitHub secrets); (3) add a step to the workflow that runs
+  `send_brief.py --send`.
 
 ## Daily automation (GitHub Actions)
 
@@ -108,8 +128,11 @@ crawler/
   common.py                # Shared logic (download, extract, de-dup, insert)
   rbi_notifications.py     # Crawler #1 (RBI)
   sebi_circulars.py        # Crawler #2 (SEBI)
+classify/
+  classify.py              # Classifier — severity/entities/summary via Gemini
 distribution/
-  send_brief.py            # Email the daily brief (built, not yet active)
+  generate_brief.py        # Builds the brief content from classified docs
+  send_brief.py            # Emails the brief (built, not yet active)
 .github/workflows/
   crawl.yml                # Daily automation (both crawlers)
 schema.sql                 # Database tables (documents, subscribers)

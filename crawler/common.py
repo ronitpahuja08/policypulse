@@ -182,6 +182,26 @@ def hash_already_stored(client, content_hash):
     return len(result.data) > 0
 
 
+def url_already_stored(client, source, url):
+    """Return True if this source already has a row for this exact URL.
+
+    This is a *secondary* de-dup guard. The main guard is content_hash (which detects
+    genuinely new or changed text). But if the PDF-extraction library is ever upgraded and
+    reads the same PDF into slightly different text, its content_hash would change and it
+    would look 'new'. Matching on (source, url) as well means we never insert a second row
+    for a document whose page/URL we've already stored.
+    """
+    result = (
+        client.table("documents")
+        .select("id")
+        .eq("source", source)
+        .eq("url", url)
+        .limit(1)
+        .execute()
+    )
+    return len(result.data) > 0
+
+
 def insert_document(client, record):
     """Insert one record into the `documents` table."""
     client.table("documents").insert(record).execute()
@@ -226,6 +246,12 @@ def store_pdf_document(client, source, title, published_date, url, pdf_url, log)
         # Change detection: if we've stored this fingerprint before, skip it.
         if hash_already_stored(client, content_hash):
             log.info("Already in database (skipping): %s", title[:70])
+            return "skipped"
+
+        # Secondary guard: skip if we already have this exact URL for this source, even if
+        # the text (and thus the hash) came out slightly different this time.
+        if url_already_stored(client, source, url):
+            log.info("URL already in database (skipping): %s", title[:70])
             return "skipped"
 
         record = {

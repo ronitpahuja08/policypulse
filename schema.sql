@@ -22,3 +22,21 @@ create index if not exists documents_source_idx on documents (source);
 
 -- If you created the table BEFORE the `status` column existed, run this once to add it:
 --   alter table documents add column if not exists status text not null default 'ok';
+
+
+-- ======================================================================================
+-- subscribers — the email list for the daily brief.
+-- OPTIONAL for now: you only need to run this when you're ready to start collecting
+-- subscribers (Day 6). The distribution/send_brief.py script can preview without it
+-- (using --test-recipient).
+-- ======================================================================================
+
+create table if not exists subscribers (
+    id                 bigint generated always as identity primary key,
+    email              text unique not null,          -- the subscriber's email address
+    name               text,                           -- optional display name
+    active             boolean not null default true,  -- set to false once they unsubscribe
+    unsubscribe_token  uuid not null default gen_random_uuid(),  -- unique per subscriber; used in the unsubscribe link
+    subscribed_at      timestamptz not null default now(),
+    unsubscribed_at    timestamptz                     -- when they unsubscribed (null while active)
+);

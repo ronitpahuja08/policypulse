@@ -42,11 +42,28 @@ own regulator's listing page.
 Both use a `content_hash` (fingerprint) to skip documents we've already seen, so running
 repeatedly only adds genuinely new items.
 
+**Email distribution scaffolding (built, deliberately INERT):**
+
+- `distribution/send_brief.py` — the code that will email the daily brief to subscribers
+  via SMTP (Python's built-in `smtplib`, no extra deps). It is **inert by default**: it
+  only *previews* (dry run) and will not send unless SMTP credentials are set AND `--send`
+  is passed. It is intentionally NOT wired into the daily GitHub Actions workflow.
+- The brief content is a **placeholder** (`build_placeholder_brief`) that lists recently
+  crawled `documents`. The real Day-6 generator replaces just that function.
+- Subscribers live in a `subscribers` table (see `schema.sql`) — created only when the
+  user is ready. Preview without it via `--test-recipient`.
+- Chosen distribution approach (decided with the founder): **fully automated email**, not
+  Substack. To activate later: create the `subscribers` table, add `SMTP_*` secrets, and
+  add a `send_brief.py --send` step to the workflow.
+
 **Not built yet (future phases — do NOT build unless asked):**
 
 - More regulators (IRDAI, MCA, etc.)
-- Classifier (fills in `severity` and `entities_affected`)
-- Daily compliance brief generator
+- Classifier (fills in `severity` and `entities_affected`) — when built, also add the
+  **URL as a secondary de-dup guard** (decided on Day 2) so extraction-drift can't create
+  duplicate rows.
+- Daily compliance brief *generator* (the real summary content; the email *delivery*
+  layer above already exists).
 
 ## How the pieces fit together
 

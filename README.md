@@ -65,7 +65,7 @@ python crawler/sebi_circulars.py --days 21
 You'll see a live log of each item being downloaded, extracted, and either inserted or
 skipped (because we already had it), then a summary line at the end.
 
-## Email distribution (built, not yet active)
+## Email distribution
 
 `distribution/send_brief.py` is the code that will eventually email the daily brief to
 subscribers. **It is deliberately inert:** it will not send anything unless you both

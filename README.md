@@ -15,7 +15,7 @@ brief for fintech/NBFC compliance officers.
   (the PDF lives one click deeper, inside each circular's detail page).
 - Both share `crawler/common.py` and de-duplicate using a content fingerprint, so
   re-running only adds genuinely new documents.
-- **Distribution (built, NOT yet active)** (`distribution/send_brief.py`) — the code that
+- **Distribution** (`distribution/send_brief.py`) — the code that
   will email the daily brief to subscribers. It is inert until you switch it on — see
   "Email distribution" below.
 
